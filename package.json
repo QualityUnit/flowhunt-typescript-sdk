@@ -1,6 +1,6 @@
 {
   "name": "flowhunt",
-  "version": "0.0.4",
+  "version": "3.15.1",
   "description": "OpenAPI client for flowhunt",
   "author": "FlowHunt Team <support@flowhunt.io>",
   "repository": {
