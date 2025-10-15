@@ -1,0 +1,178 @@
+name: Auto Release and Publish to NPM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      publish_to_npm:
+        description: 'Publish to NPM'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  check-version:
+    name: Check for version changes
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+      new-version: ${{ steps.check.outputs.version }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Check if version changed
+      id: check
+      run: |
+        # Get current version from package.json
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        echo "Current version: $CURRENT_VERSION"
+
+        # Get previous version from the previous commit (only for push events)
+        if [ "${{ github.event_name }}" = "push" ]; then
+          git checkout HEAD~1 -- package.json 2>/dev/null || echo "No previous version found"
+          PREVIOUS_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "none")
+          echo "Previous version: $PREVIOUS_VERSION"
+
+          # Restore current package.json
+          git checkout HEAD -- package.json
+
+          # Check if version changed
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          fi
+        else
+          # For manual workflow dispatch, always proceed
+          echo "Manual trigger - proceeding with current version"
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        fi
+
+  build:
+    name: Build and test package
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build package
+      run: npm run build
+
+    - name: Run tests (if available)
+      run: npm test --if-present
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: typescript-package-dist
+        path: |
+          dist/
+          package.json
+          README.md
+
+  create-release:
+    name: Create GitHub Release
+    needs: [check-version, build]
+    if: needs.check-version.outputs.version-changed == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Generate release notes
+      run: |
+        VERSION="${{ needs.check-version.outputs.new-version }}"
+
+        # Create release notes
+        cat > release_notes.md << EOF_RELEASE
+        ## FlowHunt TypeScript SDK v${VERSION}
+
+        ### Changes
+        - Version bump to ${VERSION}
+        - Updated package metadata
+
+        ### Installation
+        \`\`\`bash
+        npm install flowhunt@${VERSION}
+        \`\`\`
+
+        or
+
+        \`\`\`bash
+        yarn add flowhunt@${VERSION}
+        \`\`\`
+
+        ### Documentation
+        - [Repository](https://github.com/QualityUnit/flowhunt-typescript-sdk)
+        - [NPM Package](https://www.npmjs.com/package/flowhunt)
+
+        ---
+        *This release was automatically generated when version ${VERSION} was pushed to main branch.*
+        EOF_RELEASE
+
+        echo "Release notes created"
+
+    - name: Create Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ needs.check-version.outputs.new-version }}"
+        gh release create "v${VERSION}" \
+          --title "Release v${VERSION}" \
+          --notes-file release_notes.md \
+          --latest
+
+  publish-to-npm:
+    name: Publish to NPM
+    needs: [check-version, build]
+    if: needs.check-version.outputs.version-changed == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_to_npm == 'true'))
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/flowhunt
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build package
+      run: npm run build
+
+    - name: Publish to NPM
+      run: npm publish --provenance --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
