@@ -79,10 +79,10 @@ jobs:
         registry-url: 'https://registry.npmjs.org'
 
     - name: Install dependencies
-      run: npm ci
+      run: npm install
 
     - name: Build package
-      run: npm run build
+      run: npm run build --if-present
 
     - name: Run tests (if available)
       run: npm test --if-present
@@ -167,10 +167,10 @@ jobs:
         registry-url: 'https://registry.npmjs.org'
 
     - name: Install dependencies
-      run: npm ci
+      run: npm install
 
     - name: Build package
-      run: npm run build
+      run: npm run build --if-present
 
     - name: Publish to NPM
       run: npm publish --provenance --access public
