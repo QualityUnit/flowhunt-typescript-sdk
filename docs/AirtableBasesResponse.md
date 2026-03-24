@@ -1,0 +1,20 @@
+# AirtableBasesResponse
+
+
+## Properties
+
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**bases** | [**Array&lt;AirtableBaseResponse&gt;**](AirtableBaseResponse.md) |  | [default to undefined]
+
+## Example
+
+```typescript
+import { AirtableBasesResponse } from 'flowhunt';
+
+const instance: AirtableBasesResponse = {
+    bases,
+};
+```
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
